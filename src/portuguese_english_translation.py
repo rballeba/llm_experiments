@@ -51,14 +51,17 @@ def prepare_batch(pt, en):
     pt = tokenizers.pt.tokenize(pt)
     # Trim to MAX_TOKENS
     pt = pt[:, :MAX_TOKENS] # This is probably not the best way to work with long sentences, simply following tensorflow tutorial.
-    pt = pt.to_tensor(default_value=0) # Pad value set to default_value=0
+    pt = pt.to_tensor() # Pad value set to default_value=0
 
     en = tokenizers.en.tokenize(en)
     # Trim to MAX_TOKENS
-    en = en[:, :MAX_TOKENS] 
-    en = en.to_tensor(default_value=0)
-    en_inputs = en[:, :-1].to_tensor(default_value=0) # Drop the [END] tokens.
-    en_labels = en[:, 1:].to_tensor(default_value=0) # Drop [START] tokens.
+    en = en[:, :(MAX_TOKENS+1)] 
+    en = en.to_tensor()
+    print("===========")
+    print(en)
+    print("===========")
+    en_inputs = en[:, :-1] #.to_tensor() Drop the [END] tokens.
+    en_labels = en[:, 1:] #.to_tensor() Drop [START] tokens.
     return (pt, en_inputs), en_labels
 
 BUFFER_SIZE = 20000
@@ -125,7 +128,7 @@ class CrossAttention(BaseAttention):
             value=context,
             return_attention_scores=False)
         x = self.add([x, attn_output])
-        x = self.layernorm(x)
+        x = self.layer_norm(x)
         return x
 
 class GlobalSelfAttention(BaseAttention):
@@ -137,7 +140,7 @@ class GlobalSelfAttention(BaseAttention):
             return_attention_scores=False
         )
         x = self.add([x, attn_output])
-        x = self.layernorm(x)
+        x = self.layer_norm(x)
         return x
     
 class CausalSelfAttention(BaseAttention):
@@ -150,7 +153,7 @@ class CausalSelfAttention(BaseAttention):
             return_attention_scores=False
         )
         x = self.add([x, attn_output])
-        x = self.layernorm(x)
+        x = self.layer_norm(x)
         return x
     
 class FeedForward(tf.keras.layers.Layer):
@@ -210,7 +213,7 @@ class DecoderLayer(tf.keras.layers.Layer):
             key_dim=d_model,
             dropout=dropout_rate
         )
-
+        super(DecoderLayer, self).__init__()
         self.cross_attention = CrossAttention(
             num_heads=num_heads,
             key_dim=d_model,
@@ -230,7 +233,8 @@ class Decoder(tf.keras.layers.Layer):
         self.d_model = d_model
         self.num_layers = num_layers
         self.pos_embedding = PositionalEmbedding(vocab_size, d_model)
-        self.dec_layers = [DecoderLayer(d_model, num_heads, dff, dropout_rate) for _ in range(num_layers)]
+        self.dec_layers = [DecoderLayer(d_model=d_model, num_heads=num_heads, dff=dff, dropout_rate=dropout_rate) 
+                           for _ in range(num_layers)]
         self.dropout = tf.keras.layers.Dropout(dropout_rate)
 
     def call(self, x, context):
